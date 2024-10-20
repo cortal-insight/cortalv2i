@@ -7,7 +7,7 @@ name = "cortalv2i"
 version = "0.1.0"
 description = "A tool to extract frames from videos or YouTube links with various methods."
 authors = [
-    { name = "Your Name", email = "your.email@example.com" }
+    { name = "Durga_CKL", email = "kldurga999@gmail.com" }
 ]
 license = { file = "LICENSE" }
 readme = "README.md"
