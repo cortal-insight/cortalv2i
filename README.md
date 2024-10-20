@@ -1,6 +1,6 @@
 # CortalV2I
 
-A tool to extract frames from videos or YouTube links.
+A tool to extract frames from videos or YouTube links ( without downloaing videos).
 
 ## Features
 
@@ -29,6 +29,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+.
 
 ## Installation
 
