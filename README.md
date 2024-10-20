@@ -9,7 +9,7 @@ A tool to extract frames from videos or YouTube links.
 - Supports multiple output image formats.
 
 ## Example_code
-
+```bash
 import os
 from cortalv2i.video_processor import process_videos
 
