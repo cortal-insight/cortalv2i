@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cortalv2i"
+version = "0.1.0"
+description = "A tool to extract frames from videos or YouTube links."
+authors = [
+    { name="Durga CKL", email="kldurga999@gmail.com" }
+]
+dependencies = [
+    "opencv-python",
+    "yt-dlp",
+    "scenedetect"
+]
+
+[project.scripts]
+cortalv2i = "cortalv2i.main:main"
