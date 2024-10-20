@@ -1,0 +1,16 @@
+cortalv2i/
+│
+├── cortalv2i/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── video_processor.py
+│   ├── frame_extractor.py
+│   └── video2img.py
+│
+├── tests/
+│   ├── test_main.py
+│   ├── test_video_processor.py
+│   └── test_frame_extractor.py
+│
+├── pyproject.toml
+└── README.md
