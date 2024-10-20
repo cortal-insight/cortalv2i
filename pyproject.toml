@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cortalv2i"
+version = "0.1.0"
+description = "A tool to extract frames from videos or YouTube links with various methods."
+authors = [
+    { name = "Your Name", email = "your.email@example.com" }
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "opencv-python",
+    "yt-dlp",
+    "scenedetect",
+    "tqdm"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/cortalv2i"
+"Bug Tracker" = "https://github.com/yourusername/cortalv2i/issues"
+
+[project.scripts]
+cortalv2i = "cortalv2i.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cortalv2i*"]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+cortalv2i = ["*.py"]
