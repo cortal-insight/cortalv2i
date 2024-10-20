@@ -1,0 +1,9 @@
+Metadata-Version: 2.1
+Name: cortalv2i
+Version: 0.1.0
+Summary: A tool to extract frames from videos or YouTube links.
+Author-email: Durga CKL <kldurga999@gmail.com>
+License-File: LICENSE
+Requires-Dist: opencv-python
+Requires-Dist: yt-dlp
+Requires-Dist: scenedetect

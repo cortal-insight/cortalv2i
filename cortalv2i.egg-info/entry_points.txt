@@ -1,0 +1,2 @@
+[console_scripts]
+cortalv2i = cortalv2i.main:main
