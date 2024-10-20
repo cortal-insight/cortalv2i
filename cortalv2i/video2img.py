@@ -1,11 +1,10 @@
 import cv2
 import os
-from scenedetect import detect_scenes
+from scenedetect import detect, ContentDetector
 
 def save_scene_frames(video_path, output_folder):
     os.makedirs(output_folder, exist_ok=True)
-
-    scene_list = detect_scenes(video_path)
+    scene_list = detect(video_path, ContentDetector())
 
     cap = cv2.VideoCapture(video_path)
 
@@ -22,6 +21,6 @@ def save_scene_frames(video_path, output_folder):
     cap.release()
 
 # Example usage:
-# video_file = 'path_to_video.mp4'
-# output_dir = 'output_directory'
+# video_file = 'path/to/your/video.mp4'
+# output_dir = 'path/to/output/directory'
 # save_scene_frames(video_file, output_dir)
