@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 
 class FrameExtractor(ABC):
     def __init__(self, output_dir, output_format='jpg', resolution=None):
+        # Use the exact path provided without any additional nesting
         self.output_dir = output_dir
         self.output_format = output_format
         self.resolution = resolution

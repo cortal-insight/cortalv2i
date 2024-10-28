@@ -13,16 +13,12 @@ from cortalv2i.frame_extractor import (
 from cortalv2i.audio_extractor import AudioExtractor
 
 class VideoProcessor:
-    def __init__(self, output_dir: str, max_workers: int = None):
-        self.output_dir = output_dir
+    def __init__(self, frames_dir: str, audio_dir: str = None, max_workers: int = None):
+        self.frames_dir = frames_dir
+        self.audio_dir = audio_dir
         self.max_workers = max_workers or os.cpu_count()
         self.logger = logging.getLogger(self.__class__.__name__)
-        
-        # Create output directories
-        self.frame_output_dir = os.path.join(output_dir, 'frames')
-        self.audio_output_dir = os.path.join(output_dir, 'audio')
-        os.makedirs(self.frame_output_dir, exist_ok=True)
-        os.makedirs(self.audio_output_dir, exist_ok=True)
+        self.logger.info(f"Initialized VideoProcessor with frames_dir: {frames_dir}, audio_dir: {audio_dir}")
 
     def _get_frame_extractor(self, extraction_config: Dict):
         """
@@ -36,21 +32,21 @@ class VideoProcessor:
 
             if method == "1" and params.get('fps'):
                 return FPSFrameExtractor(
-                    self.frame_output_dir,
+                    self.frames_dir,
                     fps=params['fps'],
                     output_format=output_format,
                     resolution=resolution
                 )
             elif method == "2" and params.get('time_interval'):
                 return TimeIntervalFrameExtractor(
-                    self.frame_output_dir,
+                    self.frames_dir,
                     time_interval=params['time_interval'],
                     output_format=output_format,
                     resolution=resolution
                 )
             elif method == "3" and params.get('threshold'):
                 return ChangeDetectionFrameExtractor(
-                    self.frame_output_dir,
+                    self.frames_dir,
                     threshold=params['threshold'],
                     output_format=output_format,
                     resolution=resolution
@@ -70,6 +66,9 @@ class VideoProcessor:
         Process various input sources including files, directories, and URLs
         """
         try:
+            self.logger.info(f"Processing input source: {input_source}")
+            self.logger.info(f"Audio config: {audio_config}")
+            
             if isinstance(input_source, str):
                 if os.path.isfile(input_source):
                     if input_source.endswith(('.txt', '.csv')):
@@ -90,6 +89,7 @@ class VideoProcessor:
                         future.result()
         except Exception as e:
             self.logger.error(f"Error processing input source: {str(e)}")
+            raise  # Add raise to propagate the error
 
     def _process_list_file(self, file_path: str, extraction_config: Dict, audio_config: Dict, progress_callback=None):
         try:
@@ -128,30 +128,56 @@ class VideoProcessor:
 
     def _process_video_file(self, video_path: str, extraction_config: Dict, audio_config: Dict, progress_callback=None):
         try:
+            self.logger.info(f"Processing video file: {video_path}")
+            self.logger.info(f"Audio config: {audio_config}")
+            self.logger.info(f"Audio directory: {self.audio_dir}")
+            
             # Extract frames
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
                 raise Exception(f"Could not open video file: {video_path}")
             
+            # Extract frames if extractor is configured
             extractor = self._get_frame_extractor(extraction_config)
             if extractor:
+                # Create a simple progress callback if none provided
+                if progress_callback is None:
+                    progress_callback = lambda x: None
+                    
                 frames_extracted = extractor.extract_frames(cap, progress_callback)
                 self.logger.info(f"Extracted {frames_extracted} frames from {video_path}")
             
             cap.release()
 
-            # Extract audio if configured
-            if audio_config:
-                audio_extractor = AudioExtractor(self.audio_output_dir)
-                audio_extractor.extract_audio(video_path, progress_callback=progress_callback, **audio_config)
+            # Extract audio if configured and audio directory is set
+            if audio_config and self.audio_dir:
+                try:
+                    self.logger.info(f"Starting audio extraction for {video_path}")
+                    audio_extractor = AudioExtractor(self.audio_dir)
+                    success = audio_extractor.extract_audio(
+                        input_path=video_path,
+                        format=audio_config.get('format', 'mp3'),
+                        bitrate=audio_config.get('bitrate', '192k'),
+                        progress_callback=progress_callback
+                    )
+                    if success:
+                        self.logger.info(f"Successfully extracted audio from {video_path}")
+                    else:
+                        self.logger.error(f"Failed to extract audio from {video_path}")
+                except Exception as audio_error:
+                    self.logger.error(f"Error during audio extraction: {str(audio_error)}")
+            else:
+                self.logger.info(f"Skipping audio extraction: audio_config={audio_config}, audio_dir={self.audio_dir}")
+
         except Exception as e:
             self.logger.error(f"Error processing video file {video_path}: {str(e)}")
+            raise
 
     def _process_url(self, url: str, extraction_config: Dict, audio_config: Dict, progress_callback=None):
         try:
             # Extract audio directly from the URL if configured
-            if audio_config:
-                audio_extractor = AudioExtractor(self.audio_output_dir)
+            if audio_config and self.audio_dir:  # Check for audio_dir
+                audio_extractor = AudioExtractor(self.audio_dir)  # Use self.audio_dir instead of output_dir
                 audio_extractor.extract_audio(url, progress_callback=progress_callback, **audio_config)
 
             # Extract frames from the URL
