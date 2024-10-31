@@ -3,14 +3,35 @@ cortalv2i/
 ├── cortalv2i/
 │   ├── __init__.py
 │   ├── main.py
-│   ├── video_processor.py
-│   ├── frame_extractor.py
-│   └── video2img.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── video_processor.py
+│   │   ├── frame_extractor.py
+│   │   ├── audio_extractor.py
+│   │   └── video_chunker.py
+│   │
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   ├── config_loader.py
+│   │   └── dir_manager.py
+│   │
+│   └── cli/
+│       ├── __init__.py
+│       └── commands.py
 │
 ├── tests/
+│   ├── __init__.py
 │   ├── test_main.py
 │   ├── test_video_processor.py
 │   └── test_frame_extractor.py
 │
+├── docs/
+│   ├── conf.py
+│   ├── index.rst
+│   └── api.rst
+│
 ├── pyproject.toml
+├── setup.py
+├── requirements.txt
+├── LICENSE
 └── README.md

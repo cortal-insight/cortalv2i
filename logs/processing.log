@@ -1,0 +1,29 @@
+2024-10-30 05:31:07,953 - AudioExtractor - ERROR - Error extracting audio from file C:\Users\dkodurul_stu\Downloads\cortal\input: [Errno 13] Permission denied: 'C:\\Users\\dkodurul_stu\\Downloads\\cortal\\input'
+2024-10-30 05:31:33,194 - AudioExtractor - ERROR - Error extracting audio from file C:\Users\dkodurul_stu\Downloads\cortal\input: [Errno 13] Permission denied: 'C:\\Users\\dkodurul_stu\\Downloads\\cortal\\input'
+2024-10-30 05:32:26,870 - __main__ - ERROR - An error occurred: name 'run_interactive_mode' is not defined
+Traceback (most recent call last):
+  File "C:\Users\dkodurul_stu\cortalinsight\cortalv2i\cortalv2i\main.py", line 619, in main
+    run_interactive_mode()
+    ^^^^^^^^^^^^^^^^^^^^
+NameError: name 'run_interactive_mode' is not defined
+2024-10-30 05:35:21,043 - AudioExtractor - INFO - Successfully extracted audio to: C:\Users\dkodurul_stu\Downloads\cortal\output\video_1.mp3
+2024-10-30 05:35:46,961 - __main__ - ERROR - An error occurred: name 'run_interactive_mode' is not defined
+Traceback (most recent call last):
+  File "C:\Users\dkodurul_stu\cortalinsight\cortalv2i\cortalv2i\main.py", line 657, in main
+    run_interactive_mode()
+    ^^^^^^^^^^^^^^^^^^^^
+NameError: name 'run_interactive_mode' is not defined
+2024-10-30 05:39:16,144 - __main__ - ERROR - An error occurred: name 'run_interactive_mode' is not defined
+Traceback (most recent call last):
+  File "C:\Users\dkodurul_stu\cortalinsight\cortalv2i\cortalv2i\main.py", line 657, in main
+    run_interactive_mode()
+    ^^^^^^^^^^^^^^^^^^^^
+NameError: name 'run_interactive_mode' is not defined
+2024-10-30 05:43:03,135 - __main__ - ERROR - An error occurred: 
+Traceback (most recent call last):
+  File "C:\Users\dkodurul_stu\cortalinsight\cortalv2i\cortalv2i\main.py", line 641, in main
+    run_interactive_mode()
+  File "C:\Users\dkodurul_stu\cortalinsight\cortalv2i\cortalv2i\main.py", line 541, in run_interactive_mode
+    choice = input("\nSelect operation (1-3): ").strip()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+EOFError

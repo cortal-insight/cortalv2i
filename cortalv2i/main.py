@@ -1,15 +1,19 @@
+import argparse
 import logging
 import os
 import sys
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from pathlib import Path
 import cv2
 from tqdm import tqdm
-from concurrent.futures import ThreadPoolExecutor
-from cortalv2i.video_processor import VideoProcessor
-from cortalv2i.audio_extractor import AudioExtractor
-from cortalv2i.dir_manage import DirectoryManager
-from cortalv2i.video_chunker import VideoChunker
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import yaml
+
+from cortalv2i.core.video_processor import VideoProcessor
+from cortalv2i.core.audio_extractor import AudioExtractor
+from cortalv2i.utils.dir_manager import DirectoryManager
+from cortalv2i.core.video_chunker import VideoChunker
+from cortalv2i.utils.config_loader import load_config
 
 def setup_logging(log_file: str):
     logging.basicConfig(
@@ -20,17 +24,6 @@ def setup_logging(log_file: str):
             logging.StreamHandler(sys.stdout)
         ]
     )
-
-def get_video_duration(video_path: str) -> int:
-    try:
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        duration = int(frame_count / fps)
-        cap.release()
-        return duration
-    except:
-        return 0
 
 def process_input_source(source: str) -> List[str]:
     if os.path.isfile(source):
@@ -45,455 +38,303 @@ def process_input_source(source: str) -> List[str]:
         return [source]
     return []
 
-def calculate_workers(video_length_seconds: int) -> int:
-    if video_length_seconds < 300:
-        return 2
-    elif video_length_seconds < 1800:
-        return 4
-    else:
-        return min(8, os.cpu_count() or 1)
-
-def process_video_chunk(chunk_path: str, frames_dir: str, audio_dir: str, 
-                       preferences: Dict, max_workers: int, extract_audio: bool = True) -> None:
-    """Process a single video chunk"""
+def process_chunk(chunk_info: dict) -> bool:
     try:
-        logger = logging.getLogger(__name__)
+        source = chunk_info['source']
+        start_frame, end_frame = chunk_info['chunk_path']
+        output_dir = chunk_info['output_dir']
+        config = chunk_info['config']
         
-        # Log input parameters
-        logger.info(f"Processing chunk: {chunk_path}")
-        logger.info(f"Frames directory: {frames_dir}")
-        logger.info(f"Audio directory: {audio_dir}")
-        logger.info(f"Extract audio: {extract_audio}")
-        
-        # Create processor with both frames and audio directories
         processor = VideoProcessor(
-            frames_dir=frames_dir,
-            audio_dir=audio_dir if extract_audio else None,
-            max_workers=max_workers
+            frames_dir=output_dir['frames'],
+            audio_dir=output_dir['audio'] if 'audio' in config else None
         )
+
+        with tqdm(total=end_frame - start_frame,
+                  desc=f"Chunk {chunk_info['index']}/{chunk_info['total']}",
+                  position=chunk_info['index']) as pbar:
+
+            def update_progress(progress):
+                pbar.n = int(progress * (end_frame - start_frame))
+                pbar.refresh()
+
+            processor.process_input(
+                source,
+                start_frame=start_frame,
+                end_frame=end_frame,
+                extraction_config=config['frames'],
+                audio_config=config.get('audio'),
+                progress_callback=update_progress
+            )
         
-        # Ensure audio config is properly formatted
-        audio_config = None
-        if extract_audio and preferences.get('audio'):
-            audio_config = {
-                'format': preferences['audio'].get('format', 'mp3'),
-                'bitrate': preferences['audio'].get('bitrate', '192k')
-            }
+        return True
+
+    except Exception as e:
+        print(f"\nError processing chunk {chunk_info['index']}: {str(e)}")
+        return False
+
+def process_audio_chunk(chunk_info: dict) -> bool:
+    try:
+        source = chunk_info['source']
+        start_time, end_time = chunk_info['chunk_path']
+        output_dir = chunk_info['output_dir']
+        config = chunk_info['config']
         
-        # Create a progress bar wrapper
-        with tqdm(total=100, desc=f"Processing {os.path.basename(chunk_path)}") as pbar:
-            def progress_callback(progress):
+        audio_processor = AudioExtractor(output_dir['audio'])
+
+        with tqdm(total=100,
+                  desc=f"Audio Chunk {chunk_info['index']}/{chunk_info['total']}",
+                  position=chunk_info['index']) as pbar:
+
+            def update_progress(progress):
                 pbar.n = int(progress * 100)
                 pbar.refresh()
-            
-            # Process the video
-            processor.process_input(
-                input_source=chunk_path,
-                extraction_config=preferences,
-                audio_config=audio_config,
-                progress_callback=progress_callback
+
+            audio_processor.extract_audio(
+                source,
+                format=config['audio']['format'],
+                bitrate=config['audio']['bitrate'],
+                progress_callback=update_progress,
+                start_time=start_time,
+                end_time=end_time,
+                chunk_index=chunk_info['index'] if chunk_info['total'] > 1 else None
             )
+        
+        return True
 
     except Exception as e:
-        logger.error(f"Error in process_video_chunk: {str(e)}")
-        raise
+        print(f"\nError processing audio chunk {chunk_info['index']}: {str(e)}")
+        return False
 
-def process_with_progress(processor, source: str, config: Dict, process_type: str):
-    """Handle progress updates for processing"""
-    try:
-        # Don't try to get duration if source is None or not a file
-        if source and os.path.isfile(source):
-            duration = get_video_duration(source)
+def get_paths() -> Tuple[str, str]:
+    print("\nPath Configuration:")
+    while True:
+        input_path = input("Enter input path (video file/folder/URL): ").strip()
+        if input_path:
+            if os.path.exists(input_path) or input_path.startswith(('http://', 'https://', 'www.')):
+                break
+            print("Invalid path! Please enter a valid file path, directory, or URL")
         else:
-            duration = 100  # Default duration for progress bar
-            
-        with tqdm(total=duration, desc=f"{process_type}",
-                  bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
-            def progress_callback(progress):
-                pbar.n = int(progress * duration)
-                pbar.refresh()
-            
-            if processor and source:
-                if process_type == "Extracting frames from":
-                    processor.process_input(source, config, progress_callback=progress_callback)
-                elif process_type == "Extracting audio from":
-                    processor.extract_audio(source, progress_callback=progress_callback, **config)
-            else:
-                # Just update progress bar
-                pbar.n = int(progress * duration)
-                pbar.refresh()
-                
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error in progress handling: {str(e)}")
+            print("Input path cannot be empty")
 
-def get_user_input(prompt: str, default: str = '', validator=None):
     while True:
-        user_input = input(f"{prompt} [default: {default}]: ").strip() or default
-        if validator is None or validator(user_input):
-            return user_input
-        print("Invalid input. Please try again.")
+        output_path = input("Enter output directory path: ").strip()
+        if output_path:
+            try:
+                os.makedirs(output_path, exist_ok=True)
+                break
+            except Exception as e:
+                print(f"Error creating output directory: {str(e)}")
+        else:
+            print("Output path cannot be empty")
 
-def get_paths():
-    """Get input and output paths from user"""
-    print("\n=== Path Selection ===")
-    
-    # Get input path
-    while True:
-        input_path = input("\nEnter input path (video file/folder/URL/text file): ").strip()
-        if os.path.exists(input_path) or input_path.startswith(('http://', 'https://', 'www.')):
-            break
-        print("Invalid path. Please enter a valid file/folder path or URL.")
-    
-    # Get output path
-    while True:
-        output_path = input("\nEnter output directory path: ").strip()
-        try:
-            os.makedirs(output_path, exist_ok=True)
-            break
-        except Exception as e:
-            print(f"Error creating output directory: {str(e)}")
-            print("Please enter a valid directory path.")
-    
     return input_path, output_path
 
-def get_processing_options():
-    """Get processing options from user"""
-    print("\n=== Processing Options ===")
+def get_processing_options() -> Dict:
     options = {}
-    
-    # Frame extraction method
-    print("\nSelect frame extraction method:")
-    print("1. FPS-based extraction")
-    print("2. Time interval-based extraction")
-    print("3. Change detection-based extraction")
-    
-    while True:
-        method = input("Enter your choice (1-3): ").strip()
-        if method in ['1', '2', '3']:
-            break
-        print("Invalid choice. Please enter 1, 2, or 3.")
-    
-    # Get parameters based on method
-    if method == "1":
-        while True:
-            try:
-                fps = float(input("Enter desired FPS (e.g., 1 for 1 frame per second): "))
-                if fps > 0:
-                    options['frames'] = {
-                        'method': method,
-                        'params': {'fps': fps}
-                    }
-                    break
-            except ValueError:
-                print("Please enter a valid number.")
-    
-    elif method == "2":
-        while True:
-            try:
-                interval = float(input("Enter time interval in seconds: "))
-                if interval > 0:
-                    options['frames'] = {
-                        'method': method,
-                        'params': {'time_interval': interval}
-                    }
-                    break
-            except ValueError:
-                print("Please enter a valid number.")
-    
-    elif method == "3":
-        while True:
-            try:
-                threshold = float(input("Enter change detection threshold (0.0-1.0): "))
-                if 0 <= threshold <= 1:
-                    options['frames'] = {
-                        'method': method,
-                        'params': {'threshold': threshold}
-                    }
-                    break
-            except ValueError:
-                print("Please enter a valid number between 0 and 1.")
-    
-    # Frame format
-    print("\nSelect frame format:")
-    print("1. JPG")
-    print("2. PNG")
-    while True:
-        format_choice = input("Enter your choice (1-2): ").strip()
-        if format_choice in ['1', '2']:
-            options['frames']['output_format'] = 'jpg' if format_choice == '1' else 'png'
-            break
-        print("Invalid choice. Please enter 1 or 2.")
-    
-    # Resolution (optional)
-    print("\nEnter desired resolution (leave blank for original resolution)")
-    print("Format: width*height (e.g., 1920*1080)")
-    res = input("Resolution: ").strip()
-    if res:
-        options['frames']['resolution'] = res
-    
-    # Audio extraction
-    while True:
-        audio_choice = input("\nExtract audio? (y/n): ").strip().lower()
-        if audio_choice in ['y', 'n']:
-            break
-        print("Please enter 'y' or 'n'.")
-    
-    if audio_choice == 'y':
-        # Audio format
-        print("\nSelect audio format:")
-        print("1. MP3")
-        print("2. WAV")
-        print("3. AAC")
-        while True:
-            format_choice = input("Enter your choice (1-3): ").strip()
-            if format_choice in ['1', '2', '3']:
-                format_map = {'1': 'mp3', '2': 'wav', '3': 'aac'}
-                audio_format = format_map[format_choice]
-                break
-            print("Invalid choice. Please enter 1, 2, or 3.")
-        
-        # Audio bitrate
-        print("\nSelect audio bitrate:")
-        print("1. 128k")
-        print("2. 192k")
-        print("3. 320k")
-        while True:
-            bitrate_choice = input("Enter your choice (1-3): ").strip()
-            if bitrate_choice in ['1', '2', '3']:
-                bitrate_map = {'1': '128k', '2': '192k', '3': '320k'}
-                bitrate = bitrate_map[bitrate_choice]
-                break
-            print("Invalid choice. Please enter 1, 2, or 3.")
-        
-        options['audio'] = {
-            'format': audio_format,
-            'bitrate': bitrate
-        }
-    
+    print("\nSelect processing options:")
+    options['frames'] = get_frame_config()
+    if input("Extract audio? (y/n): ").strip().lower() == 'y':
+        options['audio'] = get_audio_config()
     return options
 
-def get_user_input():
-    """Get input sources from user"""
-    print("\nWelcome to Cortal Video Processor!")
-    print("Please enter your video source(s). It can be:")
-    print("1. A path to a video file")
-    print("2. A path to a directory containing videos")
-    print("3. A path to a text file containing video paths/URLs")
-    print("4. A direct video URL")
-    print("\nEnter 'done' when finished adding sources.")
+def get_audio_config() -> Dict:
+    config = {}
+    supported_formats = ['mp3', 'wav', 'aac', 'm4a', 'flac']
+    supported_bitrates = ['64k', '128k', '192k', '256k', '320k']
     
-    sources = []
     while True:
-        source = input("\nEnter source path/URL (or 'done' to finish): ").strip()
-        if source.lower() == 'done':
+        format_choice = input(f"Select audio format ({'/'.join(supported_formats)}) [mp3]: ").strip().lower()
+        if format_choice in [''] + supported_formats:
             break
-        if source:
-            sources.append(source)
-    
-    return sources
+        print(f"Invalid format! Please select from {', '.join(supported_formats)}")
+    config['format'] = format_choice if format_choice else 'mp3'
 
-def get_user_preferences():
-    """Get all processing preferences from user"""
-    preferences = {}
-    
-    print("\nWelcome to Cortal Video Processor!")
-    
-    # Get input path
     while True:
-        input_path = input("\nEnter input path (video file/directory/text file with paths): ").strip()
-        if os.path.exists(input_path):
+        bitrate_choice = input(f"Select audio bitrate ({'/'.join(supported_bitrates)}) [192k]: ").strip().lower()
+        if bitrate_choice in [''] + supported_bitrates:
             break
-        print("Invalid path. Please enter a valid file or directory path.")
-    
-    # Get output directory
+        print(f"Invalid bitrate! Please select from {', '.join(supported_bitrates)}")
+    config['bitrate'] = bitrate_choice if bitrate_choice else '192k'
+
+    return config
+
+def get_frame_config() -> Dict:
+    config = {'method': None, 'params': {}}
+    print("\nFrame Extraction Configuration:")
+    print("1. Extract by FPS")
+    print("2. Extract by time interval")
+    print("3. Extract every second")
     while True:
-        output_path = input("\nEnter output directory path: ").strip()
-        try:
-            os.makedirs(output_path, exist_ok=True)
+        choice = input("Select extraction method (1-3): ").strip()
+        if choice in ['1', '2', '3']:
             break
-        except:
-            print("Invalid output path. Please enter a valid directory path.")
-    
-    # Frame extraction method
-    print("\nSelect frame extraction method:")
-    print("1. FPS-based extraction")
-    print("2. Time interval-based extraction")
-    print("3. Change detection-based extraction")
-    
-    while True:
-        method = input("Enter your choice (1-3): ").strip()
-        if method in ['1', '2', '3']:
-            break
-        print("Invalid choice. Please enter 1, 2, or 3.")
-    
-    # Frame extraction parameters
-    if method == '1':
+        print("Invalid choice! Please select 1, 2, or 3")
+
+    if choice == '1':
+        config['method'] = 'fps'
         while True:
             try:
-                fps = float(input("\nEnter desired FPS (e.g., 1 for 1 frame per second): "))
+                fps = float(input("Enter frames per second (e.g., 1): ").strip() or 1)
                 if fps > 0:
-                    preferences['frames'] = {
-                        'method': 'fps',
-                        'params': {'fps': fps}
-                    }
                     break
+                print("FPS must be greater than 0")
             except ValueError:
-                print("Please enter a valid number.")
-    
-    elif method == '2':
+                print("Please enter a valid number")
+        config['params']['fps'] = fps
+    elif choice == '2':
+        config['method'] = 'interval'
         while True:
             try:
-                interval = float(input("\nEnter time interval in seconds: "))
+                interval = float(input("Enter interval in seconds (e.g., 1): ").strip() or 1)
                 if interval > 0:
-                    preferences['frames'] = {
-                        'method': 'interval',
-                        'params': {'interval': interval}
-                    }
                     break
+                print("Interval must be greater than 0")
             except ValueError:
-                print("Please enter a valid number.")
-    
-    else:  # method == '3'
-        while True:
-            try:
-                threshold = float(input("\nEnter change detection threshold (0.0-1.0): "))
-                if 0 <= threshold <= 1:
-                    preferences['frames'] = {
-                        'method': 'change',
-                        'params': {'threshold': threshold}
-                    }
-                    break
-            except ValueError:
-                print("Please enter a valid number between 0 and 1.")
-    
-    # Resolution
-    print("\nEnter desired resolution (leave blank for original resolution)")
-    print("Format: width*height (e.g., 1920*1080)")
-    resolution = input("Resolution: ").strip()
+                print("Please enter a valid number")
+        config['params']['interval'] = interval
+    elif choice == '3':
+        config['method'] = 'fps'
+        config['params'] = {'fps': 1.0}  # One frame per second
+
+    while True:
+        format_choice = input("Select frame format (jpg/png) [jpg]: ").strip().lower()
+        if format_choice in ['', 'jpg', 'png']:
+            break
+        print("Invalid format! Please select jpg or png")
+    config['output_format'] = format_choice if format_choice else 'jpg'
+
+    resolution = input("Enter output resolution (e.g., 1920*1080) [original]: ").strip()
     if resolution:
-        preferences['frames']['resolution'] = resolution
-    
-    # Frame output format
-    print("\nSelect frame output format:")
-    print("1. JPG")
-    print("2. PNG")
-    while True:
-        format_choice = input("Enter your choice (1-2): ").strip()
-        if format_choice in ['1', '2']:
-            preferences['frames']['output_format'] = 'jpg' if format_choice == '1' else 'png'
-            break
-        print("Invalid choice. Please enter 1 or 2.")
-    
-    # Audio extraction
-    while True:
-        audio_extract = input("\nExtract audio? (y/n): ").strip().lower()
-        if audio_extract in ['y', 'n']:
-            break
-        print("Please enter 'y' or 'n'.")
-    
-    if audio_extract == 'y':
-        # Audio format
-        print("\nSelect audio format:")
-        print("1. MP3")
-        print("2. WAV")
-        print("3. AAC")
-        while True:
-            format_choice = input("Enter your choice (1-3): ").strip()
-            if format_choice in ['1', '2', '3']:
-                audio_format = {'1': 'mp3', '2': 'wav', '3': 'aac'}[format_choice]
-                break
-            print("Invalid choice. Please enter 1, 2, or 3.")
-        
-        # Audio bitrate
-        print("\nSelect audio bitrate:")
-        print("1. 128k")
-        print("2. 192k")
-        print("3. 320k")
-        while True:
-            bitrate_choice = input("Enter your choice (1-3): ").strip()
-            if bitrate_choice in ['1', '2', '3']:
-                audio_bitrate = {'1': '128k', '2': '192k', '3': '320k'}[bitrate_choice]
-                break
-            print("Invalid choice. Please enter 1, 2, or 3.")
-        
-        preferences['audio'] = {
-            'format': audio_format,
-            'bitrate': audio_bitrate
-        }
-    
-    return input_path, output_path, preferences
+        config['resolution'] = resolution
+
+    return config
 
 def main():
+    parser = argparse.ArgumentParser(description="Video Processing Tool")
+    parser.add_argument("--config", help="Path to config.yaml file")
+    parser.add_argument("--input", help="Input path (video file/folder/URL)")
+    parser.add_argument("--output", help="Output directory path")
+    args = parser.parse_args()
+
     try:
-        # Setup logging
         setup_logging('processing.log')
         logger = logging.getLogger(__name__)
 
-        # Get paths and processing options
-        input_path, base_output_path = get_paths()
-        processing_options = get_processing_options()
-        
-        # Initialize components
+        # Check for ffmpeg dependency
+        try:
+            import ffmpeg
+        except ImportError:
+            logger.error("ffmpeg-python package is not installed. Please install it using: pip install ffmpeg-python")
+            print("\nError: ffmpeg-python package is not installed. Please install it using: pip install ffmpeg-python")
+            sys.exit(1)
+
+        # Verify ffmpeg is installed on the system
+        try:
+            ffmpeg.probe('dummy')
+        except ffmpeg.Error:
+            pass  # This is expected for a dummy probe
+        except FileNotFoundError:
+            logger.error("ffmpeg is not installed on your system. Please install ffmpeg first.")
+            print("\nError: ffmpeg is not installed on your system. Please install ffmpeg first.")
+            sys.exit(1)
+
+        if args.config:
+            config = load_config(args.config)
+            input_path = config['input_path']
+            base_output_path = config['output_path']
+            processing_options = config['processing_options']
+        elif args.input and args.output:
+            input_path = args.input
+            base_output_path = args.output
+            processing_options = get_processing_options()
+        else:
+            input_path, base_output_path = get_paths()
+            processing_options = get_processing_options()
+
         dir_manager = DirectoryManager()
-        video_chunker = VideoChunker()
         
-        # Process input sources
         input_sources = process_input_source(input_path)
         
         if not input_sources:
             print("No valid input sources found. Exiting...")
             sys.exit(1)
-            
-        # Print detected sources and configuration
-        print("\nDetected video sources:")
-        for idx, source in enumerate(input_sources, 1):
-            print(f"{idx}. {source}")
-            
-        print("\nProcessing configuration:")
-        print(f"Output directory: {base_output_path}")
-        print(f"Frame extraction: {processing_options['frames']['method']}")
-        print(f"Frame format: {processing_options['frames']['output_format']}")
-        if 'resolution' in processing_options['frames']:
-            print(f"Resolution: {processing_options['frames']['resolution']}")
-        if 'audio' in processing_options:
-            print(f"Audio format: {processing_options['audio']['format']}")
-            print(f"Audio bitrate: {processing_options['audio']['bitrate']}")
-        
-        # Confirm with user
-        confirm = input("\nProceed with processing? (y/n): ").strip().lower()
-        if confirm != 'y':
-            print("Processing cancelled by user.")
-            sys.exit(0)
 
-        # Process each source
         for source in input_sources:
             try:
                 logger.info(f"\nProcessing: {source}")
                 print(f"\nProcessing: {source}")
-                
-                # Get output paths for this source
+
                 paths = dir_manager.get_output_paths(source, base_output_path)
                 os.makedirs(paths['frames'], exist_ok=True)
+
+                chunker = VideoChunker(chunk_minutes=15)  # 15 minutes chunks
+                chunk_ranges = chunker.split_video(source)
+
+                print(f"\nProcessing {len(chunk_ranges)} chunks of 15 minutes each...")
+
+                with ThreadPoolExecutor(max_workers=min(4, len(chunk_ranges))) as executor:
+                    futures = []
+                    for idx, chunk_range in enumerate(chunk_ranges):
+                        futures.append(
+                            executor.submit(
+                                process_chunk,
+                                {
+                                    'source': source,
+                                    'chunk_path': chunk_range,
+                                    'output_dir': paths,
+                                    'config': processing_options,
+                                    'index': idx + 1,
+                                    'total': len(chunk_ranges)
+                                }
+                            )
+                        )
+
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logger.error(f"Chunk processing error: {str(e)}")
+
+                print(f"\nCompleted processing: {source}")
+
                 if 'audio' in processing_options:
                     os.makedirs(paths['audio'], exist_ok=True)
-                
-                # Create video processor
-                processor = VideoProcessor(
-                    frames_dir=paths['frames'],
-                    audio_dir=paths['audio'] if 'audio' in processing_options else None
-                )
-                
-                # Process the video
-                processor.process_input(
-                    source,
-                    extraction_config=processing_options['frames'],
-                    audio_config=processing_options.get('audio'),
-                    progress_callback=lambda x: print(f"Progress: {x*100:.1f}%", end='\r')
-                )
-                
-                print(f"\nCompleted processing: {source}")
-                
+                    
+                    # Get video duration
+                    probe = ffmpeg.probe(source)
+                    duration = float(probe['format']['duration'])
+                    
+                    # Create audio chunks
+                    chunk_duration = 15 * 60  # 15 minutes in seconds
+                    audio_chunks = [(i * chunk_duration, min((i + 1) * chunk_duration, duration)) 
+                                    for i in range(int(duration / chunk_duration) + 1)]
+
+                    print(f"\nProcessing {len(audio_chunks)} audio chunks...")
+
+                    with ThreadPoolExecutor(max_workers=min(4, len(audio_chunks))) as executor:
+                        futures = []
+                        for idx, chunk_range in enumerate(audio_chunks):
+                            futures.append(
+                                executor.submit(
+                                    process_audio_chunk,
+                                    {
+                                        'source': source,
+                                        'chunk_path': chunk_range,
+                                        'output_dir': paths,
+                                        'config': processing_options,
+                                        'index': idx + 1,
+                                        'total': len(audio_chunks)
+                                    }
+                                )
+                            )
+
+                        for future in as_completed(futures):
+                            try:
+                                future.result()
+                            except Exception as e:
+                                logger.error(f"Audio chunk processing error: {str(e)}")
+
             except Exception as e:
                 logger.exception(f"Error processing {source}: {str(e)}")
                 print(f"\nError processing {source}: {str(e)}")

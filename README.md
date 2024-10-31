@@ -1,38 +1,59 @@
-# CortalV2I
+# Cortalv2i
 
-A tool to extract frames from videos or YouTube links ( without downloaing videos).
+A video processing and frame extraction SDK that supports multiple input sources and extraction methods.
 
 ## Features
 
-- Supports multiple input formats including archives and text files with YouTube links.
-- Extracts frames based on time intervals or change detection.
-- Supports multiple output image formats.
-
-## Example_code
-```bash
-import os
-from cortalv2i.video_processor import process_videos
-
-def main():
-    # Example: Processing a directory of video files
-    input_path = "/path/to/video/directory"
-    output_dir = "/path/to/output/images"
-    method = "2"  # Using time interval method
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    # Process the videos
-    process_videos(input_path, output_dir, method)
-
-    print(f"Frames extracted to {output_dir}")
-
-if __name__ == "__main__":
-    main()
-.
+- Multiple frame extraction methods (FPS-based, time-interval, change detection)
+- Audio extraction support
+- YouTube video processing
+- Batch processing capabilities
+- Progress tracking
+- Parallel processing support
 
 ## Installation
 
-```bash
-pip install .
+bash
+pip install cortalv2i
+## Usage
+python
+from cortalv2i.video_processor import VideoProcessor
+Initialize processor
+processor = VideoProcessor(
+frames_dir="output/frames",
+audio_dir="output/audio"
+)
+Process a video file
+processor.process_input(
+"path/to/video.mp4",
+extraction_config={
+"method": "1",
+"params": {"fps": 1},
+"output_format": "jpg"
+},
+audio_config={
+"format": "mp3",
+"bitrate": "192k"
+}
+)
 
+## commands
+```
+## steps to use this
+clone this repo 
+```
+git clone https://github.com/cortal-ai/cortalv2i.git
+```
+
+# Extract frames only
+python -m cortalv2i.extract_frames C:\Users\*username*\Downloads\cortal\input\video_1.mp4 C:\Users\*username*\Downloads\cortal\output\ --fps 1 --format jpg --resolution 1920*1080
+
+## using config.yaml file
+python -m cortalv2i.main --config config.yaml
+
+## using interactive terminal
+python -m cortalv2i.main
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
