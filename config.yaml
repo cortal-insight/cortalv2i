@@ -6,9 +6,9 @@ processing_options:
     method: "fps"
     params:
       fps: 1
-    output_format: "jpg"
+    output_format: "png"
     resolution: "1920*1080"
   
   audio:
-    format: "mp3"
+    format: "wav"
     bitrate: "192k"
