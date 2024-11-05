@@ -11,11 +11,24 @@ A video processing and frame extraction SDK that supports multiple input sources
 - Progress tracking
 - Parallel processing support
 
-## Installation
 
-bash
-pip install cortalv2i
 ## Usage
+
+Clone this repo 
+
+```
+git clone https://github.com/cortal-ai/cortalv2i.git
+```
+
+# Extract frames only
+python main.py 
+
+Pick the options accordingly
+
+
+## using config.yaml file
+python -m cortalv2i.main --config config.yaml
+
 ```
 from cortalv2i.video_processor import VideoProcessor
 Initialize processor
@@ -42,23 +55,12 @@ audio_config={
 )
 ```
 
-## commands
 
-## steps to use this
-clone this repo 
-```
-git clone https://github.com/cortal-ai/cortalv2i.git
-```
 
-# Extract frames only
-python -m cortalv2i.extract_frames C:\Users\*username*\Downloads\cortal\input\video_1.mp4 C:\Users\*username*\Downloads\cortal\output\ --fps 1 --format jpg --resolution 1920*1080
 
-## using config.yaml file
-python -m cortalv2i.main --config config.yaml
 
-## using interactive terminal
-python -m cortalv2i.main
+
+
 
 ## License
-
 This project is licensed under the MIT License - see the LICENSE file for details.

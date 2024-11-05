@@ -1,4 +1,5 @@
 import argparse
+import subprocess
 import logging
 import os
 import sys
@@ -9,13 +10,13 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import yaml
 
-from cortalv2i.core.video_processor import VideoProcessor
-from cortalv2i.core.audio_extractor import AudioExtractor
-from cortalv2i.utils.dir_manager import DirectoryManager
-from cortalv2i.core.video_chunker import VideoChunker
-from cortalv2i.utils.config_loader import load_config
+from core.video_processor import VideoProcessor
+from core.audio_extractor import AudioExtractor
+from utils.dir_manager import DirectoryManager
+from core.video_chunker import VideoChunker
+from utils.config_loader import load_config
 
-def setup_logging(log_file: str):
+def setup_logging(log_file: str) -> None:
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -26,6 +27,9 @@ def setup_logging(log_file: str):
     )
 
 def process_input_source(source: str) -> List[str]:
+    """
+    Process the input source and return a list of files/URLs to process.
+    """
     if os.path.isfile(source):
         if source.endswith(('.txt', '.csv')):
             with open(source, 'r') as f:
@@ -39,6 +43,9 @@ def process_input_source(source: str) -> List[str]:
     return []
 
 def process_chunk(chunk_info: dict) -> bool:
+    """
+    Process a video chunk for frame extraction.
+    """
     try:
         source = chunk_info['source']
         start_frame, end_frame = chunk_info['chunk_path']
@@ -74,6 +81,9 @@ def process_chunk(chunk_info: dict) -> bool:
         return False
 
 def process_audio_chunk(chunk_info: dict) -> bool:
+    """
+    Process an audio chunk for extraction.
+    """
     try:
         source = chunk_info['source']
         start_time, end_time = chunk_info['chunk_path']
@@ -138,7 +148,31 @@ def get_processing_options() -> Dict:
         options['audio'] = get_audio_config()
     return options
 
+
+def check_ffmpeg(logger) -> None:
+    """
+    Verify ffmpeg is installed on the system
+    """
+    try:
+        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        print("ffmpeg is installed and functional.")
+    except subprocess.CalledProcessError as e:
+        logger.error("ffmpeg is installed but encountered an error: %s", e)
+        print("\nError: ffmpeg is installed but encountered an error. Please check your ffmpeg installation.")
+        sys.exit(1)
+    except FileNotFoundError:
+        logger.error("ffmpeg is not installed or not found in PATH. Please install ffmpeg.")
+        print("\nError: ffmpeg is not installed or not found in PATH. Please install ffmpeg.")
+        sys.exit(1)
+    except Exception as e:
+        logger.error("An unexpected error occurred: %s", e)
+        print("\nError: An unexpected error occurred. Please check your ffmpeg installation.")
+        sys.exit(1)
+
 def get_audio_config() -> Dict:
+    """
+    Get audio extraction configuration from the user.
+    """
     config = {}
     supported_formats = ['mp3', 'wav', 'aac', 'm4a', 'flac']
     supported_bitrates = ['64k', '128k', '192k', '256k', '320k']
@@ -218,26 +252,10 @@ def main():
     args = parser.parse_args()
 
     try:
-        setup_logging('processing.log')
+        setup_logging('Processing.log')
         logger = logging.getLogger(__name__)
 
-        # Check for ffmpeg dependency
-        try:
-            import ffmpeg
-        except ImportError:
-            logger.error("ffmpeg-python package is not installed. Please install it using: pip install ffmpeg-python")
-            print("\nError: ffmpeg-python package is not installed. Please install it using: pip install ffmpeg-python")
-            sys.exit(1)
-
-        # Verify ffmpeg is installed on the system
-        try:
-            ffmpeg.probe('dummy')
-        except ffmpeg.Error:
-            pass  # This is expected for a dummy probe
-        except FileNotFoundError:
-            logger.error("ffmpeg is not installed on your system. Please install ffmpeg first.")
-            print("\nError: ffmpeg is not installed on your system. Please install ffmpeg first.")
-            sys.exit(1)
+        check_ffmpeg(logger)
 
         if args.config:
             config = load_config(args.config)
@@ -299,6 +317,8 @@ def main():
                 print(f"\nCompleted processing: {source}")
 
                 if 'audio' in processing_options:
+                    
+                    import ffmpeg
                     os.makedirs(paths['audio'], exist_ok=True)
                     
                     # Get video duration
