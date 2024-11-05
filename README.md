@@ -16,14 +16,18 @@ A video processing and frame extraction SDK that supports multiple input sources
 bash
 pip install cortalv2i
 ## Usage
-python
+```
 from cortalv2i.video_processor import VideoProcessor
 Initialize processor
 processor = VideoProcessor(
 frames_dir="output/frames",
 audio_dir="output/audio"
 )
+```
+
 Process a video file
+
+```
 processor.process_input(
 "path/to/video.mp4",
 extraction_config={
@@ -36,9 +40,10 @@ audio_config={
 "bitrate": "192k"
 }
 )
+```
 
 ## commands
-```
+
 ## steps to use this
 clone this repo 
 ```
